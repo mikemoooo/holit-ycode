@@ -26,7 +26,7 @@ import { parseMultiAssetFieldValue, buildAssetVirtualValues } from '@/lib/multi-
 import { parseMultiReferenceValue } from '@/lib/collection-utils';
 import { combineBgValues, mergeStaticBgVars } from '@/lib/tailwind-class-mapper';
 import { getAssetsByIds } from '@/lib/repositories/assetRepository';
-import { isVirtualAssetField } from '@/lib/collection-field-utils';
+import { isVirtualAssetField, findDisplayField } from '@/lib/collection-field-utils';
 import type { FieldVariable, AssetVariable, DynamicTextVariable } from '@/types';
 import type { DesignColorVariable } from '@/types';
 
@@ -1729,6 +1729,49 @@ export async function resolveCollectionLayers(
             children: layer.children ? await Promise.all(layer.children.map(child => resolveLayer(child, itemValues, layerDataMap))) : undefined,
           };
         }
+      }
+    }
+
+    // Collection-sourced select: replace children with options from a collection
+    if (layer.name === 'select' && layer.settings?.optionsSource?.collectionId) {
+      try {
+        const sourceCollectionId = layer.settings.optionsSource.collectionId;
+        const { items: sourceItems } = await getItemsWithValues(sourceCollectionId, true);
+        const sourceFields = await getFieldsByCollectionId(sourceCollectionId);
+
+        const displayField = layer.settings.optionsSource.displayFieldId
+          ? sourceFields.find(f => f.id === layer.settings!.optionsSource!.displayFieldId) ?? findDisplayField(sourceFields)
+          : findDisplayField(sourceFields);
+
+        const placeholderOption: Layer = {
+          id: `${layer.id}-opt-placeholder`,
+          name: 'option',
+          classes: '',
+          attributes: { value: '' },
+          variables: {
+            text: { type: 'dynamic_text' as const, data: { content: 'Select...' } },
+          },
+        };
+
+        const generatedOptions: Layer[] = sourceItems.map(item => {
+          const label = displayField ? (item.values[displayField.id] || 'Untitled') : 'Untitled';
+          return {
+            id: `${layer.id}-opt-${item.id}`,
+            name: 'option',
+            classes: '',
+            attributes: { value: item.id },
+            variables: {
+              text: { type: 'dynamic_text' as const, data: { content: String(label) } },
+            },
+          };
+        });
+
+        return {
+          ...layer,
+          children: [placeholderOption, ...generatedOptions],
+        };
+      } catch (error) {
+        console.error(`Failed to resolve collection-sourced select options for layer ${layer.id}:`, error);
       }
     }
 

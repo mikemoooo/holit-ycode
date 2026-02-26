@@ -647,13 +647,54 @@ export default function CollectionFiltersSettings({
             </div>
           )}
 
-          {/* Reference/Multi-reference items selector */}
+          {/* Reference/Multi-reference items selector (with element picker support) */}
           {operatorRequiresItemSelection(condition.operator) && referenceCollectionId && (
-            <ReferenceItemsSelector
-              collectionId={referenceCollectionId}
-              value={condition.value || '[]'}
-              onChange={(value) => handleValueChange(group.id, condition.id, value)}
-            />
+            <>
+              {condition.inputLayerId ? (
+                <div className="flex items-center gap-1.5 rounded-md border border-green-500/30 bg-green-500/5 px-2 py-1.5 text-xs">
+                  <Icon name="filter" className="size-3 text-green-600 shrink-0" />
+                  <span className="truncate text-foreground">{getLinkedInputName(condition.inputLayerId)}</span>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        className="ml-auto shrink-0 text-muted-foreground hover:text-foreground"
+                        onClick={() => handleUnlinkInput(group.id, condition.id)}
+                      >
+                        <Icon name="unlink" className="size-3" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Unlink filter input</TooltipContent>
+                  </Tooltip>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <div className="flex-1">
+                    <ReferenceItemsSelector
+                      collectionId={referenceCollectionId}
+                      value={condition.value || '[]'}
+                      onChange={(value) => handleValueChange(group.id, condition.id, value)}
+                    />
+                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        className="shrink-0 p-1 rounded hover:bg-muted text-muted-foreground hover:text-green-600 transition-colors"
+                        onClick={(e) => {
+                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                          handlePickInputForCondition(group.id, condition.id, {
+                            x: rect.left + rect.width / 2,
+                            y: rect.top + rect.height / 2,
+                          });
+                        }}
+                      >
+                        <Icon name="crosshair" className="size-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Link to filter input</TooltipContent>
+                  </Tooltip>
+                </div>
+              )}
+            </>
           )}
 
           {operatorRequiresValue(condition.operator) && condition.operator !== 'item_count' && !operatorRequiresItemSelection(condition.operator) && (

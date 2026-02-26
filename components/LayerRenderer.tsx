@@ -1637,6 +1637,14 @@ const LayerItem: React.FC<{
       if (isInsideForm && !elementProps.name) {
         elementProps.name = layer.settings?.id || layer.id;
       }
+
+      if (isEditMode && layer.settings?.optionsSource?.collectionId) {
+        return (
+          <Tag {...elementProps}>
+            <option disabled value="">(Options from collection)</option>
+          </Tag>
+        );
+      }
     }
 
     // Handle button inside form - set type="submit" only when not in edit mode (preview and published)

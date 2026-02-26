@@ -19,6 +19,7 @@ interface FilterCondition {
   operator: string;
   value: string;
   value2?: string;
+  fieldType?: string;
 }
 
 // PostgREST encodes .in() values into a URL query param.

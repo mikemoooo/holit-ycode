@@ -165,6 +165,10 @@ export interface LayerSettings {
   };
   form?: FormSettings; // Form-specific settings (only for form layers)
   filterOnChange?: boolean; // For filter layers: trigger filtering on every input change (debounced)
+  optionsSource?: {
+    collectionId: string;
+    displayFieldId?: string; // defaults to title/name via findDisplayField
+  };
 }
 
 // Layer Style Types

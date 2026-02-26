@@ -61,12 +61,19 @@ export default function FilterableCollection({
   const filterValues = useFilterStore((state) => state.values);
 
   const buildApiFilters = useCallback(() => {
-    // Each active condition becomes its own group so the API ORs them.
-    // In a filter form, each input acts independently: checking "Free"
-    // and "Paid" means "show free OR paid", not "free AND paid".
-    const groups: Array<Array<{ fieldId: string; operator: string; value: string }>> = [];
+    // Conditions within the same original group are ORed (e.g. Free OR Paid).
+    // Conditions from different original groups are ANDed (e.g. (Free OR Paid) AND Category).
+    // The API uses: OR between groups, AND within a group.
+    // So we use the distributive property to convert:
+    //   (A OR B) AND C  →  (A AND C) OR (B AND C)
+
+    type FilterItem = { fieldId: string; operator: string; value: string; fieldType?: string };
+
+    const activeByGroup: FilterItem[][] = [];
 
     for (const group of filters.groups) {
+      const activeInGroup: FilterItem[] = [];
+
       for (const condition of group.conditions) {
         if (!condition.inputLayerId || !condition.fieldId) continue;
 
@@ -78,17 +85,42 @@ export default function FilterableCollection({
           }
         }
 
-        if (inputValue) {
-          groups.push([{
-            fieldId: condition.fieldId,
-            operator: condition.operator,
-            value: inputValue,
-          }]);
+        if (!inputValue) continue;
+        if (condition.fieldType === 'boolean' && inputValue === 'false') continue;
+
+        let value = inputValue;
+        if (condition.fieldType === 'reference' && condition.operator === 'is_one_of') {
+          value = JSON.stringify([inputValue]);
         }
+
+        activeInGroup.push({
+          fieldId: condition.fieldId,
+          operator: condition.operator,
+          value,
+          fieldType: condition.fieldType,
+        });
+      }
+
+      if (activeInGroup.length > 0) {
+        activeByGroup.push(activeInGroup);
       }
     }
 
-    return groups;
+    if (activeByGroup.length === 0) return [];
+
+    // Cross-product to distribute OR-within-group across AND-between-groups
+    let result: FilterItem[][] = [[]];
+    for (const groupConditions of activeByGroup) {
+      const expanded: FilterItem[][] = [];
+      for (const existing of result) {
+        for (const cond of groupConditions) {
+          expanded.push([...existing, cond]);
+        }
+      }
+      result = expanded;
+    }
+
+    return result;
   }, [filters, filterValues]);
 
   const updateEmptyStateElements = useCallback((filteredCount: number) => {
@@ -310,7 +342,7 @@ export default function FilterableCollection({
   // --- Fetch logic ---
 
   const fetchFiltered = useCallback((
-    filterGroups: Array<Array<{ fieldId: string; operator: string; value: string }>>,
+    filterGroups: Array<Array<{ fieldId: string; operator: string; value: string; fieldType?: string }>>,
     offset: number,
     append: boolean,
   ) => {

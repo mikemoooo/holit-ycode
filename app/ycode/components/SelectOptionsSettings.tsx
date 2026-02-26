@@ -4,8 +4,8 @@
  * Select Options Settings Component
  *
  * Settings panel for managing <select> element options.
- * Allows adding, editing, removing, and reordering options with Label and Value fields.
- * Follows the same UI pattern as Custom Attributes.
+ * Options can come from a static list (manually defined) or from a collection
+ * (each item becomes an option with value=itemId, label=displayField).
  */
 
 import React, { useState, useCallback } from 'react';
@@ -36,11 +36,21 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import Icon from '@/components/ui/icon';
 import { Empty, EmptyDescription } from '@/components/ui/empty';
 import SettingsPanel from './SettingsPanel';
 
 import { generateId } from '@/lib/utils';
+import { useCollectionsStore } from '@/stores/useCollectionsStore';
 
 import type { Layer } from '@/types';
 
@@ -298,9 +308,16 @@ export default function SelectOptionsSettings({
   const [newLabel, setNewLabel] = useState('');
   const [newValue, setNewValue] = useState('');
 
-  const isSelectLayer = layer?.name === 'select';
+  const { collections } = useCollectionsStore();
 
-  const options = isSelectLayer && layer ? getOptionsFromLayer(layer) : [];
+  const isSelectLayer = layer?.name === 'select';
+  const optionsSource = layer?.settings?.optionsSource;
+  const isCollectionSource = !!optionsSource?.collectionId;
+  const sourceCollectionName = isCollectionSource
+    ? collections.find(c => c.id === optionsSource!.collectionId)?.name
+    : null;
+
+  const options = isSelectLayer && layer && !isCollectionSource ? getOptionsFromLayer(layer) : [];
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -309,6 +326,24 @@ export default function SelectOptionsSettings({
       },
     })
   );
+
+  const handleSourceChange = useCallback((value: string) => {
+    if (!layer) return;
+
+    if (value === 'none') {
+      const { optionsSource: _, ...restSettings } = layer.settings || {};
+      onLayerUpdate(layer.id, {
+        settings: Object.keys(restSettings).length > 0 ? restSettings : undefined,
+      });
+    } else {
+      onLayerUpdate(layer.id, {
+        settings: {
+          ...layer.settings,
+          optionsSource: { collectionId: value },
+        },
+      });
+    }
+  }, [layer, onLayerUpdate]);
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -391,89 +426,136 @@ export default function SelectOptionsSettings({
       isOpen={isOpen}
       onToggle={() => setIsOpen(!isOpen)}
       action={
-        <Popover open={showAddPopover} onOpenChange={setShowAddPopover}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="secondary"
-              size="xs"
-            >
-              <Icon name="plus" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-64" align="end">
-            <div className="flex flex-col gap-2">
-              <div className="grid grid-cols-3">
-                <Label variant="muted">Label</Label>
-                <div className="col-span-2 *:w-full">
-                  <Input
-                    value={newLabel}
-                    onChange={(e) => setNewLabel(e.target.value)}
-                    placeholder="e.g., Option 1"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        handleAddOption();
-                      }
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3">
-                <Label>Value</Label>
-                <div className="col-span-2 *:w-full">
-                  <Input
-                    value={newValue}
-                    onChange={(e) => setNewValue(e.target.value)}
-                    placeholder="e.g., option1"
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        handleAddOption();
-                      }
-                    }}
-                  />
-                </div>
-              </div>
-
+        !isCollectionSource ? (
+          <Popover open={showAddPopover} onOpenChange={setShowAddPopover}>
+            <PopoverTrigger asChild>
               <Button
-                onClick={handleAddOption}
-                disabled={!newLabel.trim()}
-                size="sm"
                 variant="secondary"
+                size="xs"
               >
-                Add option
+                <Icon name="plus" />
               </Button>
-            </div>
-          </PopoverContent>
-        </Popover>
+            </PopoverTrigger>
+            <PopoverContent className="w-64" align="end">
+              <div className="flex flex-col gap-2">
+                <div className="grid grid-cols-3">
+                  <Label variant="muted">Label</Label>
+                  <div className="col-span-2 *:w-full">
+                    <Input
+                      value={newLabel}
+                      onChange={(e) => setNewLabel(e.target.value)}
+                      placeholder="e.g., Option 1"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleAddOption();
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3">
+                  <Label>Value</Label>
+                  <div className="col-span-2 *:w-full">
+                    <Input
+                      value={newValue}
+                      onChange={(e) => setNewValue(e.target.value)}
+                      placeholder="e.g., option1"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleAddOption();
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <Button
+                  onClick={handleAddOption}
+                  disabled={!newLabel.trim()}
+                  size="sm"
+                  variant="secondary"
+                >
+                  Add option
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+        ) : undefined
       }
     >
-      {options.length > 0 ? (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={options.map((opt) => opt.id)}
-            strategy={verticalListSortingStrategy}
-          >
-            <div className="flex flex-col gap-1">
-              {options.map((option) => (
-                <SortableOptionItem
-                  key={option.id}
-                  option={option}
-                  onEdit={handleEditOption}
-                  onRemove={handleRemoveOption}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
-      ) : (
-        <Empty>
-          <EmptyDescription>Add options for this select element.</EmptyDescription>
-        </Empty>
-      )}
+      <div className="flex flex-col gap-3">
+        {/* Source selector */}
+        <div className="grid grid-cols-3 items-center">
+          <Label variant="muted">Source</Label>
+          <div className="col-span-2">
+            <Select
+              value={isCollectionSource ? optionsSource!.collectionId : 'none'}
+              onValueChange={handleSourceChange}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="None" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                {collections.length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel>Collections</SelectLabel>
+                    {collections.map((collection) => (
+                      <SelectItem key={collection.id} value={collection.id}>
+                        {collection.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* Collection source indicator */}
+        {isCollectionSource && (
+          <div className="flex items-center gap-2 px-2 py-2 bg-muted rounded-lg">
+            <Icon name="database" className="size-3 opacity-60 shrink-0" />
+            <span className="text-xs text-muted-foreground truncate">
+              Options from {sourceCollectionName || 'collection'}
+            </span>
+          </div>
+        )}
+
+        {/* Static options editor (only when not using collection source) */}
+        {!isCollectionSource && (
+          <>
+            {options.length > 0 ? (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={options.map((opt) => opt.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="flex flex-col gap-1">
+                    {options.map((option) => (
+                      <SortableOptionItem
+                        key={option.id}
+                        option={option}
+                        onEdit={handleEditOption}
+                        onRemove={handleRemoveOption}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            ) : (
+              <Empty>
+                <EmptyDescription>Add options for this select element.</EmptyDescription>
+              </Empty>
+            )}
+          </>
+        )}
+      </div>
     </SettingsPanel>
   );
 }
