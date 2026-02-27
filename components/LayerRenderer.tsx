@@ -1150,6 +1150,11 @@ const LayerItem: React.FC<{
     }
   }
 
+  // Prevent circular component rendering (A → B → A)
+  if (layer.componentId && ancestorComponentIds?.has(layer.componentId)) {
+    return null;
+  }
+
   // Render element-specific content
   const renderContent = () => {
     // Component instances in EDIT MODE: render component's layers directly
