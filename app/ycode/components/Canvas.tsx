@@ -306,9 +306,11 @@ export default function Canvas({
 
   // Handle layer click with component resolution
   const handleLayerClick = useCallback((layerId: string, event?: React.MouseEvent) => {
-    // Suppress stale clicks that fire on the canvas when a context menu item
-    // is clicked and the menu dismisses (Radix click-through)
-    if (useEditorStore.getState().isCanvasContextMenuOpen) return;
+    // Suppress stale left-clicks that fire on the canvas when a context menu
+    // item is clicked and the menu dismisses (Radix click-through).
+    // Only block when an event is present — onLayerSelect from handleOpenChange
+    // passes no event and must always go through to select the right-clicked layer.
+    if (event && useEditorStore.getState().isCanvasContextMenuOpen) return;
 
     const componentRootId = componentMap[layerId];
     const isPartOfComponent = !!componentRootId;

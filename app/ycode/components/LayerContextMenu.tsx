@@ -12,6 +12,7 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuLabel,
   ContextMenuSeparator, ContextMenuShortcut, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
@@ -20,7 +21,7 @@ import { useEditorStore } from '@/stores/useEditorStore';
 import { usePagesStore } from '@/stores/usePagesStore';
 import { useClipboardStore } from '@/stores/useClipboardStore';
 import { useComponentsStore } from '@/stores/useComponentsStore';
-import { canHaveChildren, findLayerById, getClassesString, regenerateInteractionIds, canCopyLayer, canDeleteLayer, regenerateIdsWithInteractionRemapping, removeLayerById, findParentAndIndex, insertLayerAfter, updateLayerProps, canConvertToCollection, isExcludedFromCollection, getCollectionVariable, resetBindingsOnCollectionSourceChange } from '@/lib/layer-utils';
+import { canHaveChildren, findLayerById, getClassesString, getLayerIcon, getLayerName, regenerateInteractionIds, canCopyLayer, canDeleteLayer, regenerateIdsWithInteractionRemapping, removeLayerById, findParentAndIndex, insertLayerAfter, updateLayerProps, canConvertToCollection, isExcludedFromCollection, getCollectionVariable, resetBindingsOnCollectionSourceChange } from '@/lib/layer-utils';
 import { cloneDeep } from 'lodash';
 import { toast } from 'sonner';
 import { Icon } from '@/components/ui/icon';
@@ -43,6 +44,30 @@ interface LayerContextMenuProps {
   /** When set, we're editing a component; resolve layer from component draft so "Detach" works for nested instances */
   editingComponentId?: string | null;
 }
+
+let pendingCloseRaf = 0;
+let activeMenuDocument: Document | null = null;
+let selectionFromMenu = false;
+
+function dismissActiveContextMenu() {
+  if (activeMenuDocument) {
+    activeMenuDocument.dispatchEvent(
+      new PointerEvent('pointerdown', { bubbles: true })
+    );
+    activeMenuDocument = null;
+  }
+}
+
+// Close any open context menu when a different layer is selected (e.g. via sidebar or canvas click)
+useEditorStore.subscribe((state, prevState) => {
+  if (state.selectedLayerId !== prevState.selectedLayerId) {
+    if (selectionFromMenu) {
+      selectionFromMenu = false;
+      return;
+    }
+    dismissActiveContextMenu();
+  }
+});
 
 export default function LayerContextMenu({
   layerId,
@@ -598,18 +623,23 @@ export default function LayerContextMenu({
   const isConvertDisabled = isLocked || isComponentInstance || !!(layer && isExcludedFromCollection(layer));
 
   const handleOpenChange = (open: boolean) => {
-    // When context menu opens, select this layer for visual feedback
-    // Only select if the layer exists and is not already selected (prevent unnecessary re-renders)
+    if (open) {
+      dismissActiveContextMenu();
+      activeMenuDocument = canvasPortalContainer?.ownerDocument ?? document;
+    }
+
     if (open && onLayerSelect && layer && selectedLayerId !== layerId) {
+      selectionFromMenu = true;
       onLayerSelect(layerId);
     }
     // Hide the parent-document selection overlay while the canvas context menu is open,
     // and suppress stale clicks that fire on the canvas when the menu dismisses
     if (canvasPortalContainer) {
       if (open) {
+        cancelAnimationFrame(pendingCloseRaf);
         useEditorStore.getState().setCanvasContextMenuOpen(true);
       } else {
-        requestAnimationFrame(() => {
+        pendingCloseRaf = requestAnimationFrame(() => {
           useEditorStore.getState().setCanvasContextMenuOpen(false);
         });
       }
@@ -621,7 +651,10 @@ export default function LayerContextMenu({
 
   return (
     <ContextMenu onOpenChange={handleOpenChange}>
-      <ContextMenuTrigger asChild>
+      <ContextMenuTrigger
+        asChild
+        onContextMenu={(e) => e.stopPropagation()}
+      >
         {children}
       </ContextMenuTrigger>
       <ContextMenuContent
@@ -629,6 +662,19 @@ export default function LayerContextMenu({
         container={canvasPortalContainer}
         style={canvasPortalContainer ? { zoom: 100 / canvasZoom } : undefined}
       >
+        {canvasPortalContainer && layer && (
+          <>
+            <ContextMenuLabel className="flex items-center gap-1.5 font-normal text-muted-foreground select-none">
+              <Icon
+                name={getLayerIcon(layer)}
+                className="size-3"
+              />
+              <span className="truncate">{getLayerName(layer)}</span>
+            </ContextMenuLabel>
+            <ContextMenuSeparator />
+          </>
+        )}
+
         <ContextMenuItem onClick={handleCut} disabled={isLocked || !canCopy || !canDelete}>
           Cut
           <ContextMenuShortcut>⌘X</ContextMenuShortcut>
